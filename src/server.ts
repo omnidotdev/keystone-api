@@ -202,6 +202,9 @@ const app = new Elysia({
     } catch (error) {
       const notFound =
         error instanceof Error && error.message === "site not found";
+
+      if (!notFound) console.error("[generate] failed:", error);
+
       set.status = notFound ? 404 : 500;
 
       return { error: notFound ? "site not found" : "generation failed" };
