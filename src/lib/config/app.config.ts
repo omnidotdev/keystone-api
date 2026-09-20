@@ -2,7 +2,7 @@
  * Application configuration.
  */
 const app = {
-  name: "Template",
+  name: "Keystone",
 };
 
 export default app;
