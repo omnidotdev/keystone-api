@@ -57,9 +57,9 @@ export const createAnthropicProviderClient = (
       const stream = client.messages.stream({
         model: routedModel,
         max_tokens: 32_000,
-        system: [
-          { type: "text", text: system, cache_control: { type: "ephemeral" } },
-        ],
+        // Plain string: the Synapse gateway's Anthropic endpoint rejects the
+        // content-block array form (used for cache_control) with a 422.
+        system,
         messages: [{ role: "user", content: prompt }],
       });
 
