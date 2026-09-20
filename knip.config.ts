@@ -28,11 +28,13 @@ const knipConfig: KnipConfig = {
     "src/lib/logging/**",
     "src/lib/middleware/**",
     "src/lib/providers/**",
+    // Reusable generation/publish engine: intentional public API surface for
+    // extraction and reuse, exported ahead of every internal consumer
+    "src/lib/engine/**",
+    "src/lib/publish/**",
+    "src/lib/site/**",
   ],
   ignoreDependencies: [
-    // GitHub dependency not resolvable by knip
-    "@omnidotdev/providers",
-    "@changesets/changelog-github",
     "@changesets/cli",
     "drizzle-kit",
     // TODO switch to testcontainers (unstable behavior with Bun/Docker), then remove below

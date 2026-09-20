@@ -16,5 +16,3 @@ export const CRYSTAL_APP_URL =
 
 export const HERALD_API_URL = env.HERALD_API_URL;
 export const HERALD_API_KEY = env.HERALD_API_KEY;
-
-export const ARBOR_APP_URL = env.ARBOR_APP_URL ?? "https://arbor.omni.dev";
