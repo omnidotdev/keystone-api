@@ -28,6 +28,7 @@ import { ecosystemRuntime } from "lib/ecosystem/runtime";
 import { publishDocument } from "lib/engine/publish";
 import createGraphqlContext from "lib/graphql/createGraphqlContext";
 import { armorPlugin, createAuthenticationPlugin } from "lib/graphql/plugins";
+import { createGenerateRateLimiter } from "lib/middleware/generateRateLimit";
 import { createAnthropicProviderClient } from "lib/providers/anthropicClient";
 import { createDrizzleSiteStore } from "lib/site/drizzleSiteStore";
 import { runSiteGeneration } from "lib/site/siteService";
@@ -46,6 +47,21 @@ const KEYSTONE_BADGE = `<a href="https://keystone.omni.dev" target="_blank" rel=
 
 /** Trusted scripts/markup Keystone injects into published output */
 const PUBLISHED_INJECT = `${ecosystemRuntime(PUBLIC_BASE)}${KEYSTONE_BADGE}`;
+
+/**
+ * Extra abuse guard for the expensive /generate route (each turn spends Synapse
+ * credits). Complements the global request-rate limiter and Synapse's central
+ * spend cap by bounding generations per client IP. The builder at /build is
+ * intentionally public (no login), so this keeps one abuser from burning the
+ * shared budget without gating anonymous use.
+ */
+const generateRateLimiter = createGenerateRateLimiter();
+
+/** Best-effort client IP: the gateway forwards the real client in x-forwarded-for */
+const clientIp = (request: Request, address?: string): string =>
+  request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+  address ??
+  "unknown";
 
 const withBadge = (html: string): string =>
   html.includes("</body>")
@@ -176,24 +192,39 @@ const app = new Elysia({
   // AI generation turn for an existing site.
   // Pragmatic REST action for now; migrate to a Postgraphile Grafast mutation
   // (makeExtendSchemaPlugin) once the plan wiring is settled.
-  .post("/generate", async ({ body, set }) => {
-    const { siteId, request, model } = (body ?? {}) as {
+  .post("/generate", async ({ body, set, request, server }) => {
+    const {
+      siteId,
+      request: prompt,
+      model,
+    } = (body ?? {}) as {
       siteId?: string;
       request?: string;
       model?: string;
     };
 
-    if (!siteId || !request) {
+    if (!siteId || !prompt) {
       set.status = 400;
 
       return { error: "siteId and request are required" };
+    }
+
+    const { allowed, retryAfterSeconds } = generateRateLimiter.check(
+      clientIp(request, server?.requestIP(request)?.address),
+    );
+
+    if (!allowed) {
+      set.status = 429;
+      set.headers["Retry-After"] = String(retryAfterSeconds);
+
+      return { error: "too many generation requests, please slow down" };
     }
 
     try {
       const result = await runSiteGeneration({
         store: createDrizzleSiteStore(dbPool),
         siteId,
-        request,
+        request: prompt,
         client: createAnthropicProviderClient(),
         model,
       });
