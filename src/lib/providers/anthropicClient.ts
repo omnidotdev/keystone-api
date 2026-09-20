@@ -54,16 +54,20 @@ export const createAnthropicProviderClient = (
         ? (SYNAPSE_MODEL_MAP[model] ?? model)
         : model;
 
-      const stream = client.messages.stream({
-        model: routedModel,
-        max_tokens: 32_000,
-        // Plain string: the Synapse gateway's Anthropic endpoint rejects the
-        // content-block array form (used for cache_control) with a 422.
-        system,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const message = await stream.finalMessage();
+      // Non-streaming with a long timeout: the Synapse gateway's streaming SSE
+      // does not match the SDK's stream-event parser ("unexpected event order"),
+      // and a full-site generation still completes well within the timeout.
+      const message = await client.messages.create(
+        {
+          model: routedModel,
+          max_tokens: 32_000,
+          // Plain string: the Synapse gateway rejects the content-block array
+          // form (used for cache_control) with a 422.
+          system,
+          messages: [{ role: "user", content: prompt }],
+        },
+        { timeout: 600_000 },
+      );
 
       const text = message.content
         .filter((block) => block.type === "text")
