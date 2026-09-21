@@ -25,6 +25,7 @@ import ensureDatabase from "lib/db/ensureDatabase";
 import { siteTable } from "lib/db/schema/site.table";
 import { ecosystemRoutes } from "lib/ecosystem/routes";
 import { ecosystemRuntime } from "lib/ecosystem/runtime";
+import { designSystemMode, parseDesignSystem } from "lib/engine/manifest";
 import { publishDocument } from "lib/engine/publish";
 import createGraphqlContext from "lib/graphql/createGraphqlContext";
 import { armorPlugin, createAuthenticationPlugin } from "lib/graphql/plugins";
@@ -176,6 +177,7 @@ const app = new Elysia({
         files: siteTable.files,
         transcript: siteTable.transcript,
         publishState: siteTable.publishState,
+        designSystem: siteTable.designSystem,
       })
       .from(siteTable)
       .where(eq(siteTable.id, params.id))
@@ -187,7 +189,45 @@ const app = new Elysia({
       return { error: "site not found" };
     }
 
-    return row;
+    // Surface the generation mode the attached design system implies, so the
+    // builder can show whether generation is grounded in a design system.
+    return { ...row, mode: designSystemMode(row.designSystem) };
+  })
+  // Attach (or, with `{ detach: true }`, remove) a design system on a site.
+  // A manifest switches subsequent generation into Design-System mode (output
+  // constrained to the whitelisted components); tokens alone theme freeform
+  // output. The engine reads site.designSystem on every /generate turn.
+  .post("/sites/:id/design-system", async ({ params, body, set }) => {
+    const [row] = await dbPool
+      .select({ id: siteTable.id })
+      .from(siteTable)
+      .where(eq(siteTable.id, params.id))
+      .limit(1);
+
+    if (!row) {
+      set.status = 404;
+
+      return { error: "site not found" };
+    }
+
+    const detach = (body as { detach?: boolean } | null)?.detach === true;
+
+    try {
+      const designSystem = detach ? null : parseDesignSystem(body);
+
+      await dbPool
+        .update(siteTable)
+        .set({ designSystem, updatedAt: new Date().toISOString() })
+        .where(eq(siteTable.id, params.id));
+
+      return { mode: designSystemMode(designSystem) };
+    } catch (error) {
+      set.status = 400;
+
+      return {
+        error: error instanceof Error ? error.message : "invalid design system",
+      };
+    }
   })
   // AI generation turn for an existing site.
   // Pragmatic REST action for now; migrate to a Postgraphile Grafast mutation

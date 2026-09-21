@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
-import { extractCustomTags, validateAgainstManifest } from "./manifest";
+import {
+  designSystemMode,
+  extractCustomTags,
+  parseDesignSystem,
+  validateAgainstManifest,
+} from "./manifest";
 
 import type { ComponentManifest } from "./manifest";
 import type { SiteFiles } from "./types";
@@ -36,5 +41,77 @@ describe("validateAgainstManifest", () => {
     expect(() =>
       validateAgainstManifest(siteWith("<bad-block></bad-block>"), manifest),
     ).toThrow(/bad-block/);
+  });
+});
+
+describe("designSystemMode", () => {
+  it("is freeform with no design system", () => {
+    expect(designSystemMode()).toBe("freeform");
+    expect(designSystemMode(null)).toBe("freeform");
+  });
+
+  it("is themed with tokens only", () => {
+    expect(designSystemMode({ tokens: "{}" })).toBe("themed");
+  });
+
+  it("is design-system when a manifest is attached", () => {
+    expect(
+      designSystemMode({
+        manifest: { components: [{ name: "x-card", description: "card" }] },
+      }),
+    ).toBe("design-system");
+  });
+});
+
+describe("parseDesignSystem", () => {
+  it("accepts tokens only", () => {
+    expect(parseDesignSystem({ tokens: '{"color":{}}' })).toEqual({
+      tokens: '{"color":{}}',
+    });
+  });
+
+  it("accepts a valid manifest and drops nothing", () => {
+    const ds = parseDesignSystem({
+      manifest: {
+        components: [{ name: "sigil-button", description: "A button" }],
+      },
+    });
+    expect(ds.manifest?.components[0]?.name).toBe("sigil-button");
+  });
+
+  it("rejects a non-object", () => {
+    expect(() => parseDesignSystem("nope")).toThrow(/must be an object/);
+  });
+
+  it("rejects an empty design system", () => {
+    expect(() => parseDesignSystem({})).toThrow(/tokens and\/or a manifest/);
+  });
+
+  it("rejects a manifest with no components", () => {
+    expect(() => parseDesignSystem({ manifest: { components: [] } })).toThrow(
+      /at least one component/,
+    );
+  });
+
+  it("rejects a component tag without a hyphen", () => {
+    expect(() =>
+      parseDesignSystem({
+        manifest: { components: [{ name: "button", description: "x" }] },
+      }),
+    ).toThrow(/custom-element tag/);
+  });
+
+  it("rejects a component missing a description", () => {
+    expect(() =>
+      parseDesignSystem({
+        manifest: { components: [{ name: "x-btn" }] },
+      }),
+    ).toThrow(/needs a description/);
+  });
+
+  it("rejects non-string tokens", () => {
+    expect(() => parseDesignSystem({ tokens: 42 })).toThrow(
+      /must be a serialized string/,
+    );
   });
 });
