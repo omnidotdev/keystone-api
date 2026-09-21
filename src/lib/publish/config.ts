@@ -9,6 +9,7 @@ import {
   ARBOR_GIT_BASE,
   FRACTAL_API_TOKEN,
   FRACTAL_API_URL,
+  HOSTED_PUBLISH_ENABLED,
   KEYSTONE_PROJECT,
 } from "../config/env.config";
 import { createArborContentRepo } from "./contentRepo";
@@ -30,6 +31,7 @@ export interface HostedPublisher {
  */
 export const hostedPublisherFromEnv = (): HostedPublisher | null => {
   if (
+    !HOSTED_PUBLISH_ENABLED ||
     !FRACTAL_API_URL ||
     !FRACTAL_API_TOKEN ||
     !ARBOR_API_URL ||

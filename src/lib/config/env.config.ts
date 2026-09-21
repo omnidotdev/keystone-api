@@ -56,6 +56,14 @@ export const KEYSTONE_PROJECT = env.KEYSTONE_PROJECT ?? "keystone";
 export const ARBOR_API_URL = env.ARBOR_API_URL;
 /** Arbor Git Smart-HTTP base, e.g. https://api.arbor.omni.dev/git */
 export const ARBOR_GIT_BASE = env.ARBOR_GIT_BASE;
+/**
+ * Master switch for hosted publishing. Off until Arbor's git host is open to
+ * users (it is currently a closed beta, so pushes + Fractal's clone would be
+ * rejected). While off, publishing always returns the read-only preview and no
+ * Arbor/Fractal calls are attempted. Flip to "true" when Arbor opens.
+ */
+export const HOSTED_PUBLISH_ENABLED =
+  env.KEYSTONE_HOSTED_PUBLISH_ENABLED === "true";
 
 export const isDevEnv = NODE_ENV === "development",
   isProdEnv = NODE_ENV === "production",
