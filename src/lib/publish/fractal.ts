@@ -51,6 +51,14 @@ export interface DeployStaticSiteArgs {
   name: string;
   displayName?: string;
   source: ServiceSource;
+  /**
+   * Request-driven scale to zero via the KEDA HTTP add-on. Defaults to true:
+   * published sites idle down to zero replicas (no standing pod cost) and cold
+   * start on the next request. Set false to keep the site warm.
+   */
+  scaleToZero?: boolean;
+  /** Idle seconds before scaling to zero (only when scaleToZero) */
+  idleTimeoutSeconds?: number;
 }
 
 const isImageSource = (source: ServiceSource): source is ImageSource =>
@@ -58,12 +66,16 @@ const isImageSource = (source: ServiceSource): source is ImageSource =>
 
 /**
  * Creates (or provisions) a static-site FractalService and returns its live
- * subdomain. A prebuilt image deploys with no build step; a git source is built
- * by Fractal's auto (kiln) pipeline.
+ * subdomain (`<name>-<project>.fractal.dev`, an isolated apps domain, never a
+ * keystone.omni.dev subdomain). A prebuilt image deploys with no build step; a
+ * git source is built by Fractal's auto (kiln) pipeline. Sites scale to zero
+ * when idle by default, so an unvisited published site costs nothing to host.
  */
 export const deployStaticSite = async (
   args: DeployStaticSiteArgs,
 ): Promise<{ url: string }> => {
+  const scaleToZero = args.scaleToZero ?? true;
+
   const input = {
     project: args.project,
     name: args.name,
@@ -71,7 +83,19 @@ export const deployStaticSite = async (
     serviceType: "staticSite",
     source: args.source,
     build: { mode: isImageSource(args.source) ? "none" : "auto" },
-    deploy: { replicas: 1 },
+    deploy: {
+      replicas: 1,
+      ...(scaleToZero
+        ? {
+            autoscale: {
+              minReplicas: 0,
+              maxReplicas: 3,
+              scaleToZero: true,
+              idleTimeoutSeconds: args.idleTimeoutSeconds ?? 300,
+            },
+          }
+        : {}),
+    },
     expose: { port: 80, tls: true },
   };
 

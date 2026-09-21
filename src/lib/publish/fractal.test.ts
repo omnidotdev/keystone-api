@@ -7,6 +7,15 @@ import type { FractalClient } from "./fractal";
 interface ServiceInput {
   serviceType: string;
   build: { mode: string };
+  deploy: {
+    replicas: number;
+    autoscale?: {
+      minReplicas: number;
+      maxReplicas: number;
+      scaleToZero: boolean;
+      idleTimeoutSeconds: number;
+    };
+  };
   expose: {
     tls: boolean;
     domain: string;
@@ -66,6 +75,35 @@ describe("deployStaticSite", () => {
     });
 
     expect((calls.create as ServiceInput).build.mode).toBe("auto");
+  });
+
+  it("scales to zero by default (KEDA HTTP autoscale, minReplicas 0)", async () => {
+    const { client, calls } = mockClient();
+
+    await deployStaticSite({
+      client,
+      project: "proj",
+      name: "site",
+      source: { image: { repository: "r", tag: "t" } },
+    });
+
+    const { autoscale } = (calls.create as ServiceInput).deploy;
+    expect(autoscale?.minReplicas).toBe(0);
+    expect(autoscale?.scaleToZero).toBe(true);
+  });
+
+  it("omits autoscale when scaleToZero is false (kept warm)", async () => {
+    const { client, calls } = mockClient();
+
+    await deployStaticSite({
+      client,
+      project: "proj",
+      name: "site",
+      source: { image: { repository: "r", tag: "t" } },
+      scaleToZero: false,
+    });
+
+    expect((calls.create as ServiceInput).deploy.autoscale).toBeUndefined();
   });
 
   it("throws when Fractal returns no url", async () => {

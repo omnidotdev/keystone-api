@@ -30,7 +30,14 @@ import { publishDocument } from "lib/engine/publish";
 import createGraphqlContext from "lib/graphql/createGraphqlContext";
 import { armorPlugin, createAuthenticationPlugin } from "lib/graphql/plugins";
 import { createGenerateRateLimiter } from "lib/middleware/generateRateLimit";
+import { billing } from "lib/providers";
 import { createAnthropicProviderClient } from "lib/providers/anthropicClient";
+import { hostedPublisherFromEnv } from "lib/publish/config";
+import {
+  allowsCustomDomain,
+  resolvePublishEntitlement,
+} from "lib/publish/publishGate";
+import { publishToFractal } from "lib/publish/publishToFractal";
 import { createDrizzleSiteStore } from "lib/site/drizzleSiteStore";
 import { runSiteGeneration } from "lib/site/siteService";
 
@@ -57,6 +64,13 @@ const PUBLISHED_INJECT = `${ecosystemRuntime(PUBLIC_BASE)}${KEYSTONE_BADGE}`;
  * shared budget without gating anonymous use.
  */
 const generateRateLimiter = createGenerateRateLimiter();
+
+/**
+ * Hosted publisher (per-site FractalService on an isolated domain), assembled
+ * from env. Null when hosted publishing is not configured, in which case
+ * publishing degrades to the read-only preview served at /published/:id.
+ */
+const hostedPublisher = hostedPublisherFromEnv();
 
 /** Best-effort client IP: the gateway forwards the real client in x-forwarded-for */
 const clientIp = (request: Request, address?: string): string =>
@@ -281,12 +295,17 @@ const app = new Elysia({
       return { error: notFound ? "site not found" : "generation failed" };
     }
   })
-  // Publish a site. Locally this marks it published and serves the sanitized
-  // static output at /published/:id. When FRACTAL_API_URL + FRACTAL_API_TOKEN
-  // are set, deploy to a real staticSite FractalService instead (bake the image
-  // context from buildImageContext, push it, then deployStaticSite).
-  .post("/publish", async ({ body, set }) => {
-    const { siteId } = (body ?? {}) as { siteId?: string };
+  // Publish a site. Hosted publishing (a dedicated staticSite FractalService on
+  // an isolated fractal.dev domain, scale to zero, optional custom domain) is a
+  // paid feature: it runs only when the owning workspace is entitled AND the
+  // hosted publisher is configured. Otherwise the site gets a read-only preview
+  // link served at /published/:id (the free experience). Publishing never fails
+  // to the user for lack of entitlement; it degrades to the preview.
+  .post("/publish", async ({ body, request, set }) => {
+    const { siteId, customDomain } = (body ?? {}) as {
+      siteId?: string;
+      customDomain?: string;
+    };
 
     if (!siteId) {
       set.status = 400;
@@ -295,7 +314,12 @@ const app = new Elysia({
     }
 
     const [row] = await dbPool
-      .select({ id: siteTable.id })
+      .select({
+        id: siteTable.id,
+        organizationId: siteTable.organizationId,
+        files: siteTable.files,
+        displayName: siteTable.displayName,
+      })
       .from(siteTable)
       .where(eq(siteTable.id, siteId))
       .limit(1);
@@ -306,18 +330,77 @@ const app = new Elysia({
       return { error: "site not found" };
     }
 
-    const url = `${PUBLIC_BASE}/published/${siteId}`;
+    const previewUrl = `${PUBLIC_BASE}/published/${siteId}`;
 
+    // Decide between hosted deploy and preview based on the workspace's plan.
+    const accessToken = request.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "");
+
+    const entitlement = hostedPublisher
+      ? await resolvePublishEntitlement(
+          billing,
+          row.organizationId,
+          accessToken,
+        )
+      : { hostedPublish: false, customDomains: 0 };
+
+    if (hostedPublisher && entitlement.hostedPublish) {
+      try {
+        const wantsDomain =
+          typeof customDomain === "string" && customDomain.length > 0;
+        const domain =
+          wantsDomain && allowsCustomDomain(entitlement)
+            ? customDomain
+            : undefined;
+
+        const result = await publishToFractal({
+          contentRepo: hostedPublisher.contentRepo,
+          client: hostedPublisher.client,
+          project: hostedPublisher.project,
+          siteId,
+          site: row.files,
+          displayName: row.displayName ?? undefined,
+          customDomain: domain,
+        });
+
+        await dbPool
+          .update(siteTable)
+          .set({
+            publishState: "published",
+            deployedUrl: result.url,
+            ...(domain ? { domain } : {}),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(siteTable.id, siteId));
+
+        return {
+          url: result.url,
+          hosted: true,
+          customDomainRecords: result.customDomainRecords,
+        };
+      } catch {
+        // Never surface deploy internals; fall through to the preview so the
+        // user still gets a working link, and log server-side for triage.
+        console.error(`hosted publish failed for site ${siteId}`);
+
+        set.status = 502;
+
+        return { error: "publish failed, please try again" };
+      }
+    }
+
+    // Free / preview path.
     await dbPool
       .update(siteTable)
       .set({
         publishState: "published",
-        deployedUrl: url,
+        deployedUrl: previewUrl,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(siteTable.id, siteId));
 
-    return { url };
+    return { url: previewUrl, hosted: false };
   })
   // Serve a published site's sanitized home page
   .get("/published/:id", async ({ params, set }) => {

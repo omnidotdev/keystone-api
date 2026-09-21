@@ -43,6 +43,20 @@ export const INTERNAL_SERVICE_KEY = env.INTERNAL_SERVICE_KEY;
 /** Organization ID for service-key authenticated requests */
 export const SERVICE_ORGANIZATION_ID = env.SERVICE_ORGANIZATION_ID;
 
+// Hosted publishing (paid): a per-site staticSite FractalService deployed on an
+// isolated domain. All four are optional; when any is unset, publishing falls
+// back to the read-only preview served by the API (no hosted deploy).
+/** fractal-api GraphQL endpoint used to create/update per-site services */
+export const FRACTAL_API_URL = env.FRACTAL_API_URL;
+/** Bearer token (FractalApiToken, scoped to the keystone project) */
+export const FRACTAL_API_TOKEN = env.FRACTAL_API_TOKEN;
+/** Parent FractalProject for published sites (namespace fractal-<project>) */
+export const KEYSTONE_PROJECT = env.KEYSTONE_PROJECT ?? "keystone";
+/** Content repo (owner/name) whose per-site branches Fractal builds from */
+export const KEYSTONE_SITES_REPO = env.KEYSTONE_SITES_REPO;
+/** Token with contents:write on the content repo (prefer a short-lived one) */
+export const GITHUB_CONTENT_TOKEN = env.GITHUB_CONTENT_TOKEN;
+
 export const isDevEnv = NODE_ENV === "development",
   isProdEnv = NODE_ENV === "production",
   protectRoutes = PROTECT_ROUTES === "true";
