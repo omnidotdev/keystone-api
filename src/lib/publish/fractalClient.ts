@@ -15,6 +15,7 @@ import type { FractalClient, FractalServiceResult } from "./fractal";
  */
 
 const SERVICE_SELECTION = `{
+  url
   status {
     url
     customDomainRecords { name recordType value purpose }

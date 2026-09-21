@@ -17,6 +17,12 @@ RUN bun run src/scripts/cacheSchemaHash.ts
 FROM base AS runner
 ENV NODE_ENV=production
 
+# git is used at runtime to push a published site's build context to its Arbor
+# repo (hosted publishing); the bun base image does not ship it.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/.git-sha ./.git-sha
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build

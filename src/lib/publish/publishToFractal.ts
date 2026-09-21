@@ -25,6 +25,12 @@ export interface PublishToFractalArgs {
   project: string;
   siteId: string;
   site: SiteFiles;
+  /** Publishing user's Arbor username (owns the site's content repo) */
+  owner: string;
+  /** The user's workspace id; associates the repo with their workspace */
+  organizationId?: string;
+  /** The user's Omni access token; authorizes the repo-create + push as them */
+  authToken: string;
   /** Human label for the service; falls back to the service name */
   displayName?: string;
   /** Custom domain to attach (only when the org's plan allows one) */
@@ -61,11 +67,15 @@ export const publishToFractal = async (
 ): Promise<PublishToFractalResult> => {
   const name = serviceNameForSite(args.siteId);
 
-  // 1 + 2: bake the build context and push it to the site's content branch.
-  const source = await args.contentRepo.pushSite(
-    args.siteId,
-    buildImageContext(args.site),
-  );
+  // 1 + 2: bake the build context and push it to the site's Arbor repo (as the
+  // publishing user), yielding the git source Fractal builds from.
+  const source = await args.contentRepo.publish({
+    siteId: args.siteId,
+    owner: args.owner,
+    organizationId: args.organizationId,
+    authToken: args.authToken,
+    files: buildImageContext(args.site),
+  });
 
   // 3: create/update the staticSite service (idempotent on name).
   const { url } = await deployStaticSite({

@@ -29,6 +29,12 @@ export interface CustomDomainRecord {
 
 export interface FractalServiceResult {
   service: {
+    /**
+     * Computed expose URL (`<name>-<project>.fractal.dev`), available on the
+     * mutation return immediately (non-null in the schema), unlike `status.url`
+     * which is populated only once the operator reconciles.
+     */
+    url?: string;
     status?: {
       url?: string;
       customDomainRecords?: CustomDomainRecord[];
@@ -101,7 +107,9 @@ export const deployStaticSite = async (
 
   const result = await args.client.createFractalService(input);
 
-  const url = result.service.status?.url;
+  // Prefer the computed top-level url (immediately available) over status.url
+  // (populated only after the operator reconciles).
+  const url = result.service.url ?? result.service.status?.url;
 
   if (!url) throw new Error("Fractal did not return a service url");
 

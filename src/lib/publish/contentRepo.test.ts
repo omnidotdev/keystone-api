@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import { branchForSite, createGithubContentRepo } from "./contentRepo";
+import { createArborContentRepo, repoSlugForSite } from "./contentRepo";
+
+import type { Spawn } from "./git";
 
 const realFetch = globalThis.fetch;
 
@@ -8,94 +10,93 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-describe("branchForSite", () => {
-  it("namespaces each site to its own branch", () => {
-    expect(branchForSite("abc")).toBe("site-abc");
+/** Fake spawn: never runs git, always succeeds. */
+const okSpawn = () => {
+  const pushed: string[][] = [];
+  const spawn = ((_c: string, args: string[]) => {
+    pushed.push(args);
+    return {
+      stderr: { on: () => {} },
+      on: (e: string, cb: (code?: number) => void) => {
+        if (e === "close") queueMicrotask(() => cb(0));
+      },
+    };
+  }) as unknown as Spawn;
+  return { spawn, pushed };
+};
+
+/** Stub arbor-api GraphQL: returns the given createRepositoryWithGit payload. */
+const stubArbor = (payload: {
+  slug?: string | null;
+  ownerUsername?: string | null;
+  error?: string | null;
+}) => {
+  const requests: unknown[] = [];
+  globalThis.fetch = (async (_url: string, init: RequestInit) => {
+    requests.push(JSON.parse(String(init.body)));
+    return new Response(
+      JSON.stringify({ data: { createRepositoryWithGit: payload } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as unknown as typeof fetch;
+  return { requests };
+};
+
+describe("repoSlugForSite", () => {
+  it("produces a stable url-safe slug", () => {
+    expect(repoSlugForSite("Abc_123")).toBe("site-abc-123");
   });
 });
 
-describe("createGithubContentRepo", () => {
-  it("creates blobs, a tree, a commit, then force-updates the site ref", async () => {
-    const paths: string[] = [];
+describe("createArborContentRepo", () => {
+  it("creates the repo as the user and returns its arbor clone url on master", async () => {
+    const { requests } = stubArbor({ slug: "site-abc", ownerUsername: "ada" });
+    const { spawn } = okSpawn();
 
-    globalThis.fetch = (async (url: string, init: RequestInit) => {
-      const path = new URL(url).pathname;
-      paths.push(`${init.method} ${path}`);
-
-      // ref PATCH succeeds (branch already exists)
-      const body = JSON.stringify({ sha: "deadbeef" });
-      return new Response(body, { status: 200 });
-    }) as unknown as typeof fetch;
-
-    const repo = createGithubContentRepo({
-      owner: "omnidotdev",
-      repo: "keystone-sites",
-      token: "t",
+    const repo = createArborContentRepo({
+      apiUrl: "https://api.arbor.omni.dev/graphql",
+      gitBase: "https://api.arbor.omni.dev/git",
+      spawn,
     });
 
-    const source = await repo.pushSite("abc", {
-      "index.html": "<h1>hi</h1>",
-      Dockerfile: "FROM nginx",
+    const source = await repo.publish({
+      siteId: "abc",
+      owner: "ada",
+      organizationId: "org-1",
+      authToken: "tok",
+      files: { "index.html": "x", Dockerfile: "FROM nginx" },
     });
 
-    expect(source.git.branch).toBe("site-abc");
-    expect(source.git.url).toBe("https://github.com/omnidotdev/keystone-sites");
-
-    // two blobs, one tree, one commit, one ref update
-    expect(paths.filter((p) => p.endsWith("/git/blobs")).length).toBe(2);
-    expect(paths).toContain("POST /repos/omnidotdev/keystone-sites/git/trees");
-    expect(paths).toContain(
-      "POST /repos/omnidotdev/keystone-sites/git/commits",
-    );
-    expect(paths.some((p) => p.includes("/git/refs/heads/site-abc"))).toBe(
-      true,
-    );
+    expect(source.git.url).toBe("https://api.arbor.omni.dev/git/ada/site-abc");
+    expect(source.git.branch).toBe("master");
+    // repo created public, associated with the workspace
+    const input = (
+      requests[0] as { variables: { input: Record<string, unknown> } }
+    ).variables.input;
+    expect(input.slug).toBe("site-abc");
+    expect(input.visibility).toBe("PUBLIC");
+    expect(input.organizationId).toBe("org-1");
   });
 
-  it("creates the ref when the branch does not yet exist", async () => {
-    let patchCalls = 0;
-    let createRefCalls = 0;
+  it("treats an already-exists create as success (re-publish is idempotent)", async () => {
+    stubArbor({ error: "repository slug already exists" });
+    const { spawn, pushed } = okSpawn();
 
-    globalThis.fetch = (async (url: string, init: RequestInit) => {
-      const path = new URL(url).pathname;
-
-      if (init.method === "PATCH" && path.includes("/git/refs/heads/")) {
-        patchCalls += 1;
-        return new Response("no ref", { status: 422 });
-      }
-
-      if (init.method === "POST" && path.endsWith("/git/refs")) {
-        createRefCalls += 1;
-      }
-
-      return new Response(JSON.stringify({ sha: "abc" }), { status: 200 });
-    }) as unknown as typeof fetch;
-
-    const repo = createGithubContentRepo({
-      owner: "o",
-      repo: "r",
-      token: "t",
+    const repo = createArborContentRepo({
+      apiUrl: "https://api.arbor.omni.dev/graphql",
+      gitBase: "https://api.arbor.omni.dev/git",
+      spawn,
     });
 
-    await repo.pushSite("new", { "index.html": "x" });
+    const source = await repo.publish({
+      siteId: "abc",
+      owner: "ada",
+      authToken: "tok",
+      files: { "index.html": "x" },
+    });
 
-    expect(patchCalls).toBe(1);
-    expect(createRefCalls).toBe(1);
-  });
-
-  it("throws a sanitized error (no response body) on failure", async () => {
-    globalThis.fetch = (async () =>
-      new Response("secret-token-leak", {
-        status: 500,
-      })) as unknown as typeof fetch;
-
-    const repo = createGithubContentRepo({ owner: "o", repo: "r", token: "t" });
-
-    await expect(repo.pushSite("x", { a: "b" })).rejects.toThrow(
-      /failed \(500\)/,
-    );
-    await expect(repo.pushSite("x", { a: "b" })).rejects.not.toThrow(
-      /secret-token-leak/,
-    );
+    expect(source.git.url).toBe("https://api.arbor.omni.dev/git/ada/site-abc");
+    // still pushed content despite the create being a no-op
+    expect(pushed.some((a) => a[0] === "push")).toBe(true);
   });
 });

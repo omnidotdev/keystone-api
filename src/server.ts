@@ -302,9 +302,13 @@ const app = new Elysia({
   // link served at /published/:id (the free experience). Publishing never fails
   // to the user for lack of entitlement; it degrades to the preview.
   .post("/publish", async ({ body, request, set }) => {
-    const { siteId, customDomain } = (body ?? {}) as {
+    const { siteId, customDomain, owner } = (body ?? {}) as {
       siteId?: string;
       customDomain?: string;
+      // Publishing user's Arbor username (the git-path owner of the site repo).
+      // Sent by the authenticated builder; hosted publish needs it to push the
+      // content as that user. Absent (anonymous builder) -> preview only.
+      owner?: string;
     };
 
     if (!siteId) {
@@ -345,7 +349,14 @@ const app = new Elysia({
         )
       : { hostedPublish: false, customDomains: 0 };
 
-    if (hostedPublisher && entitlement.hostedPublish) {
+    // Hosted publish needs the publishing user's identity (to own + push the
+    // Arbor repo as them). Without a token + owner we cannot deploy as the user,
+    // so fall back to the preview even for an entitled workspace.
+    const canDeploy = Boolean(
+      hostedPublisher && entitlement.hostedPublish && accessToken && owner,
+    );
+
+    if (canDeploy && hostedPublisher && accessToken && owner) {
       try {
         const wantsDomain =
           typeof customDomain === "string" && customDomain.length > 0;
@@ -360,6 +371,9 @@ const app = new Elysia({
           project: hostedPublisher.project,
           siteId,
           site: row.files,
+          owner,
+          organizationId: row.organizationId,
+          authToken: accessToken,
           displayName: row.displayName ?? undefined,
           customDomain: domain,
         });

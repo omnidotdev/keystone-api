@@ -15,15 +15,22 @@ const site: SiteFiles = {
 };
 
 const recordingRepo = () => {
-  const calls: { siteId?: string; files?: Record<string, string> } = {};
+  const calls: {
+    siteId?: string;
+    owner?: string;
+    authToken?: string;
+    files?: Record<string, string>;
+  } = {};
   const repo: ContentRepo = {
-    pushSite: async (siteId, files) => {
-      calls.siteId = siteId;
-      calls.files = files;
+    publish: async (ctx) => {
+      calls.siteId = ctx.siteId;
+      calls.owner = ctx.owner;
+      calls.authToken = ctx.authToken;
+      calls.files = ctx.files;
       return {
         git: {
-          url: "https://github.com/o/keystone-sites",
-          branch: `site-${siteId}`,
+          url: `https://api.arbor.omni.dev/git/${ctx.owner}/site-${ctx.siteId}`,
+          branch: "master",
         },
       };
     },
@@ -79,15 +86,19 @@ describe("publishToFractal", () => {
       project: "keystone",
       siteId: "abc",
       site,
+      owner: "ada",
+      authToken: "tok",
     });
 
     expect(result.url).toBe("https://site-abc-keystone.fractal.dev");
     expect(result.service).toBe("site-abc");
-    // content pushed with a baked Dockerfile + nginx.conf
+    // content pushed as the user, with a baked Dockerfile + nginx.conf
     expect(repoCalls.siteId).toBe("abc");
+    expect(repoCalls.owner).toBe("ada");
+    expect(repoCalls.authToken).toBe("tok");
     expect(repoCalls.files?.Dockerfile).toContain("nginx");
     // deployed from the branch the repo returned, scale to zero on
-    expect(calls.create?.source.git.branch).toBe("site-abc");
+    expect(calls.create?.source.git.branch).toBe("master");
     expect(calls.create?.deploy.autoscale?.minReplicas).toBe(0);
     // no custom domain attach when none requested
     expect(calls.update).toBeUndefined();
@@ -116,6 +127,8 @@ describe("publishToFractal", () => {
       project: "keystone",
       siteId: "abc",
       site,
+      owner: "ada",
+      authToken: "tok",
       customDomain: "www.x.com",
     });
 
