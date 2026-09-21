@@ -16,8 +16,8 @@ export interface AnthropicClientOptions {
  * rotates its lineup. Isolated here so the engine and UI keep clean logical ids.
  */
 const SYNAPSE_MODEL_MAP: Record<string, string> = {
-  "claude-opus-5": "anthropic/claude-opus-4-5",
-  "claude-sonnet-5": "anthropic/claude-sonnet-5",
+  "claude-opus-5": "anthropic/claude-opus-4-6",
+  "claude-sonnet-5": "anthropic/claude-sonnet-4-5-20250929",
   "claude-haiku-4-5": "anthropic/claude-haiku-4-5-20251001",
 };
 
