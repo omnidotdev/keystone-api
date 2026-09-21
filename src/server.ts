@@ -45,13 +45,12 @@ import { runSiteGeneration } from "lib/site/siteService";
 const PUBLIC_BASE = process.env.PUBLIC_BASE_URL ?? `https://localhost:${PORT}`;
 
 /**
- * Credit + connector badge injected into published sites: a "Built with
- * Keystone" mark plus a live-on-Fractal status pill. Shown on the Free tier;
- * removable on paid tiers (gate on plan when billing is wired). The live dot
- * reflects that the site is being served; wire it to the FractalService status
- * (phase/conditions) once real Fractal deploys land.
+ * Attribution badge injected into the free preview: a "Built with Keystone"
+ * mark. Shown on the free tier (preview links); paid hosted sites have the badge
+ * removed. No hosting claim here, since the preview is served by the API, not a
+ * hosted deploy.
  */
-const KEYSTONE_BADGE = `<a href="https://keystone.omni.dev" target="_blank" rel="noreferrer" style="position:fixed;bottom:16px;right:16px;z-index:2147483647;display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;background:#17130f;color:#f6f1e8;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;text-decoration:none;box-shadow:0 8px 22px -8px rgba(0,0,0,.55)">🗝️ Built with Keystone <span style="opacity:.45">·</span> <span style="color:#7ec98a">● Live on Fractal</span></a>`;
+const KEYSTONE_BADGE = `<a href="https://keystone.omni.dev" target="_blank" rel="noreferrer" style="position:fixed;bottom:16px;right:16px;z-index:2147483647;display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;background:#17130f;color:#f6f1e8;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;text-decoration:none;box-shadow:0 8px 22px -8px rgba(0,0,0,.55)">🗝️ Built with Keystone</a>`;
 
 /** Trusted scripts/markup Keystone injects into published output */
 const PUBLISHED_INJECT = `${ecosystemRuntime(PUBLIC_BASE)}${KEYSTONE_BADGE}`;

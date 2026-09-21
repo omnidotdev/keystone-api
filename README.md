@@ -34,9 +34,14 @@ bun demo "a bold landing page for an artisanal coffee roaster"
   - `POST /sites` -> `{ siteId }`
   - `GET /sites/:id` -> `{ files, transcript, publishState }`
   - `POST /generate` `{ siteId, request, model? }` -> `{ reply, credits }` (real Claude, persisted)
-  - `POST /publish` `{ siteId }` -> `{ url }`
-  - `GET /published/:id` -> the sanitized site (scripts stripped) + a "Built with
-    Keystone / Live on Fractal" badge + the ecosystem runtime
+  - `POST /publish` `{ siteId, owner?, organizationId?, customDomain? }` ->
+    `{ url, hosted, customDomainRecords? }`. Paid workspaces get a hosted deploy
+    (a per-site Arbor repo built by Fractal on an isolated `*.fractal.dev`
+    domain, scale-to-zero, optional custom domain); everyone else gets a
+    read-only preview link. Gated by `KEYSTONE_HOSTED_PUBLISH_ENABLED` (off until
+    Arbor's git host opens; falls back to preview meanwhile).
+  - `GET /published/:id` -> the sanitized preview (scripts stripped) + a "Built
+    with Keystone" badge + the ecosystem runtime
 - **Ecosystem broker** at `/api/ecosystem/{support,buy}/checkout` and `/subscribe`.
 
 ## Architecture
@@ -45,8 +50,11 @@ bun demo "a bold landing page for an artisanal coffee roaster"
   model), mode-aware `generator` (Freeform vs Design-System), `manifest` (the
   design-system contract), `models`/`credits`, `entitlement`, preview/publish
   `assemble`, server-side `sanitize`.
-- `src/lib/publish/` — static bundle + nginx image context, and the Fractal deploy
-  adapter (`deployStaticSite` / `attachCustomDomain`) + real graphql-request client.
+- `src/lib/publish/` — hosted publish: static bundle + nginx image context
+  (`bundle`), the Arbor content repo (`contentRepo` creates the site's repo + git
+  pushes it as the user, via `git`), the Fractal deploy adapter (`deployStaticSite`
+  scale-to-zero / `attachCustomDomain`) + graphql-request client, the entitlement
+  gate (`publishGate`), and the `publishToFractal` orchestrator.
 - `src/lib/site/` — Drizzle `site` store + `runSiteGeneration` orchestration.
 - `src/lib/ecosystem/` — integration blocks broker (Halo buy, Crystal support,
   Herald email, Arbor repo). Reuses Blink's fail-soft pattern; **written for
