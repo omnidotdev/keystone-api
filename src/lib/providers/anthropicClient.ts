@@ -9,15 +9,15 @@ export interface AnthropicClientOptions {
 }
 
 /**
- * Maps Keystone's logical model ids to the ids the Synapse gateway exposes.
- * Synapse's provider config currently offers the claude-4 line (no 5-series yet),
- * so opus/sonnet map down to claude-4; update this (and Synapse's config) as the
- * gateway gains newer models. Isolated here so the engine and UI keep clean
- * logical ids.
+ * Maps Keystone's logical model ids to the concrete ids the Synapse gateway
+ * forwards to Anthropic. Pinned to models the upstream currently serves
+ * (verified live through Synapse 2026-09-20): the previous claude-4 dated ids
+ * (claude-{opus,sonnet}-4-20250514) now 404 upstream. Re-confirm when Anthropic
+ * rotates its lineup. Isolated here so the engine and UI keep clean logical ids.
  */
 const SYNAPSE_MODEL_MAP: Record<string, string> = {
-  "claude-opus-5": "anthropic/claude-opus-4-20250514",
-  "claude-sonnet-5": "anthropic/claude-sonnet-4-20250514",
+  "claude-opus-5": "anthropic/claude-opus-4-5",
+  "claude-sonnet-5": "anthropic/claude-sonnet-5",
   "claude-haiku-4-5": "anthropic/claude-haiku-4-5-20251001",
 };
 
