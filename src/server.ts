@@ -38,6 +38,15 @@ import { runSiteGeneration } from "lib/site/siteService";
 const PUBLIC_BASE = process.env.PUBLIC_BASE_URL ?? `https://localhost:${PORT}`;
 
 /**
+ * Wildcard domain each published site is served under, one subdomain per site
+ * (`<slug>.sites.keystone.omni.dev`). Multi-tenant static hosting from this API,
+ * which is the right model for many free-tier sites (a per-site Fractal service
+ * per free site would not scale); custom domains and dedicated Fractal deploys
+ * are a paid-tier follow-up.
+ */
+const SITES_DOMAIN = process.env.SITES_DOMAIN ?? "sites.keystone.omni.dev";
+
+/**
  * Credit + connector badge injected into published sites: a "Built with
  * Keystone" mark plus a live-on-Fractal status pill. Shown on the Free tier;
  * removable on paid tiers (gate on plan when billing is wired). The live dot
@@ -96,6 +105,45 @@ const app = new Elysia({
     },
   }),
 })
+  // Serve published sites by their own subdomain (<slug>.sites.keystone.omni.dev),
+  // multi-tenant from this API. Runs first (before CORS/rate-limit) so published
+  // sites are not throttled by the API request limit; non-site hosts fall through
+  // to the normal REST + GraphQL routes.
+  .onRequest(async ({ request, set }) => {
+    const host = (request.headers.get("host") ?? "")
+      .split(":")[0]
+      ?.toLowerCase();
+    const suffix = `.${SITES_DOMAIN}`;
+
+    if (!host || !host.endsWith(suffix)) return;
+
+    const slug = host.slice(0, -suffix.length);
+
+    if (!slug || slug.includes(".")) {
+      set.status = 404;
+
+      return "Not found";
+    }
+
+    const [row] = await dbPool
+      .select({ files: siteTable.files, publishState: siteTable.publishState })
+      .from(siteTable)
+      .where(eq(siteTable.name, slug))
+      .limit(1);
+
+    if (!row || row.publishState !== "published") {
+      set.status = 404;
+
+      return "Not found";
+    }
+
+    const path = new URL(request.url).pathname.replace(/^\/+|\/+$/g, "");
+    const pageId = path && row.files.pages[path] ? path : "home";
+
+    set.headers["content-type"] = "text/html; charset=utf-8";
+
+    return withBadge(publishDocument(row.files, pageId));
+  })
   // security headers
   .onAfterHandle(({ set }) => {
     set.headers["X-Content-Type-Options"] = "nosniff";
@@ -295,7 +343,7 @@ const app = new Elysia({
     }
 
     const [row] = await dbPool
-      .select({ id: siteTable.id })
+      .select({ id: siteTable.id, name: siteTable.name })
       .from(siteTable)
       .where(eq(siteTable.id, siteId))
       .limit(1);
@@ -306,7 +354,8 @@ const app = new Elysia({
       return { error: "site not found" };
     }
 
-    const url = `${PUBLIC_BASE}/published/${siteId}`;
+    // Each published site gets its own subdomain, served multi-tenant by this API.
+    const url = `https://${row.name}.${SITES_DOMAIN}`;
 
     await dbPool
       .update(siteTable)
