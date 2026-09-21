@@ -421,13 +421,10 @@ const app = new Elysia({
           customDomainRecords: result.customDomainRecords,
         };
       } catch {
-        // Never surface deploy internals; fall through to the preview so the
-        // user still gets a working link, and log server-side for triage.
+        // Never surface deploy internals. Fall through to the preview so the
+        // user still gets a working link even when the hosted deploy can't run
+        // (e.g. the git host is unavailable); log server-side for triage.
         console.error(`hosted publish failed for site ${siteId}`);
-
-        set.status = 502;
-
-        return { error: "publish failed, please try again" };
       }
     }
 
