@@ -302,13 +302,16 @@ const app = new Elysia({
   // link served at /published/:id (the free experience). Publishing never fails
   // to the user for lack of entitlement; it degrades to the preview.
   .post("/publish", async ({ body, request, set }) => {
-    const { siteId, customDomain, owner } = (body ?? {}) as {
+    const { siteId, customDomain, owner, organizationId } = (body ?? {}) as {
       siteId?: string;
       customDomain?: string;
-      // Publishing user's Arbor username (the git-path owner of the site repo).
-      // Sent by the authenticated builder; hosted publish needs it to push the
-      // content as that user. Absent (anonymous builder) -> preview only.
+      // Publishing user's Arbor owner (workspace slug); the git-path owner of
+      // the site repo. Sent by the authenticated builder; hosted publish needs
+      // it to create + push the repo. Absent (anonymous builder) -> preview.
       owner?: string;
+      // Workspace the site is published under. The site is claimed to it (its
+      // entitlement gates hosted publish, its repo owns the content).
+      organizationId?: string;
     };
 
     if (!siteId) {
@@ -336,11 +339,35 @@ const app = new Elysia({
 
     const previewUrl = `${PUBLIC_BASE}/published/${siteId}`;
 
-    // Decide between hosted deploy and preview based on the workspace's plan.
     const accessToken = request.headers
       .get("authorization")
       ?.replace(/^Bearer\s+/i, "");
 
+    // Claim the site to the publishing workspace. A site is claimable only while
+    // unclaimed (the anonymous "demo-org" the public builder assigns) or when it
+    // already belongs to that workspace; claiming another workspace's site is
+    // forbidden. The workspace comes from the authenticated builder's own org
+    // claims, so a valid token vouches for membership.
+    if (
+      accessToken &&
+      organizationId &&
+      organizationId !== row.organizationId
+    ) {
+      if (row.organizationId !== "demo-org") {
+        set.status = 403;
+
+        return { error: "site belongs to another workspace" };
+      }
+
+      await dbPool
+        .update(siteTable)
+        .set({ organizationId, updatedAt: new Date().toISOString() })
+        .where(eq(siteTable.id, siteId));
+
+      row.organizationId = organizationId;
+    }
+
+    // Decide between hosted deploy and preview based on the workspace's plan.
     const entitlement = hostedPublisher
       ? await resolvePublishEntitlement(
           billing,
