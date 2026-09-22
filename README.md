@@ -46,20 +46,19 @@ bun demo "a bold landing page for an artisanal coffee roaster"
 
 ## Architecture
 
-- `src/lib/engine/` — pure, provider-agnostic generation core: `types` (site
+- `src/lib/engine/` - pure, provider-agnostic generation core: `types` (site
   model), mode-aware `generator` (Freeform vs Design-System), `manifest` (the
   design-system contract), `models`/`credits`, `entitlement`, preview/publish
   `assemble`, server-side `sanitize`.
-- `src/lib/publish/` — hosted publish: static bundle + nginx image context
+- `src/lib/publish/` - hosted publish: static bundle + nginx image context
   (`bundle`), the Arbor content repo (`contentRepo` creates the site's repo + git
   pushes it as the user, via `git`), the Fractal deploy adapter (`deployStaticSite`
   scale-to-zero / `attachCustomDomain`) + graphql-request client, the entitlement
   gate (`publishGate`), and the `publishToFractal` orchestrator.
-- `src/lib/site/` — Drizzle `site` store + `runSiteGeneration` orchestration.
-- `src/lib/ecosystem/` — integration blocks broker (Halo buy, Crystal support,
+- `src/lib/site/` - Drizzle `site` store + `runSiteGeneration` orchestration.
+- `src/lib/ecosystem/` - integration blocks broker (Halo buy, Crystal support,
   Herald email, Arbor repo). Reuses Blink's fail-soft pattern; **written for
-  extraction to `@omnidotdev/providers/ecosystem`** (see the ADR in
-  `~/projects/omni/plans/2026-09-19-omni-ecosystem-shared-lib-adr.md`).
+  extraction to `@omnidotdev/providers/ecosystem`**.
 
 ## Ecosystem blocks
 
@@ -78,8 +77,9 @@ card is always a link-out.
 
 ## Status
 
-Working locally end-to-end (generate → preview → publish). Typechecks, unit tests
-green, Biome-clean. Not yet deployed. Remaining: GraphQL data-layer migration,
-live Fractal publish (registry + token), real ecosystem service keys, shared-lib
-extraction, infra provisioning. See
-`~/projects/omni/plans/2026-09-19-keystone-web-builder-implementation.md`.
+Deployed and serving at `api.keystone.omni.dev` (builder live at
+`keystone.omni.dev`). Generate → preview → publish works end-to-end; typechecks,
+unit tests green, Biome-clean. Hosted publishing ships gated off
+(`KEYSTONE_HOSTED_PUBLISH_ENABLED`), so publish falls back to a preview link until
+Arbor's git host opens. Remaining follow-ups: GraphQL data-layer migration, real
+ecosystem service keys, and shared-lib extraction of the ecosystem broker.
