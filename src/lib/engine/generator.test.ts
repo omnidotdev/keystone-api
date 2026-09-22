@@ -53,7 +53,7 @@ describe("generate (freeform)", () => {
     expect(result.reply).toBe("done");
     expect(result.changed).toEqual(["home"]);
     expect(result.credits).toBeGreaterThan(0);
-    expect(result.model).toBe("claude-opus-5");
+    expect(result.model).toBe("claude-sonnet-5");
   });
 
   it("throws when the model returns invalid site files", async () => {

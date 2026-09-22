@@ -35,8 +35,11 @@ export const MODELS: Record<string, ModelInfo> = {
   },
 };
 
-/** Default generation model: the most capable Claude model */
-export const DEFAULT_MODEL = "claude-opus-5";
+/**
+ * Default generation model. Sonnet balances quality and cost for the hosted
+ * default; Opus stays available as the premium pick in the model picker.
+ */
+export const DEFAULT_MODEL = "claude-sonnet-5";
 
 export const getModel = (id: string): ModelInfo => {
   const model = MODELS[id];
