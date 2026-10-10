@@ -53,7 +53,7 @@
     "testcontainers": "^11.11.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.127.0",
+    "@anthropic-ai/sdk": "^0.133.0",
     "@elysiajs/cors": "^1.4.1",
     "@elysiajs/graphql-yoga": "^1.4.0",
     "@envelop/generic-auth": "^11.1.0",
