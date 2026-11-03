@@ -28,6 +28,16 @@ export const AUTH_WEBHOOK_SECRET = env.AUTH_WEBHOOK_SECRET;
 export const BILLING_WEBHOOK_SECRET = env.BILLING_WEBHOOK_SECRET;
 /** Billing/entitlements service base URL */
 export const BILLING_BASE_URL = env.BILLING_BASE_URL;
+/**
+ * Markup from real model cost to billable credits (a credit is a retail unit).
+ * Default 1.0 bills at cost (no change for existing subscribers); raise to e.g.
+ * 2.0 for ~50% gross margin, with grandfathering/announcement for live users.
+ * Fleet credit-economics standard (see Facet's CREDIT_COGS_MARKUP)
+ */
+export const CREDIT_COGS_MARKUP = (() => {
+  const parsed = Number.parseFloat(env.CREDIT_COGS_MARKUP ?? "");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+})();
 /** Authorization PDP API URL */
 export const AUTHZ_API_URL = env.AUTHZ_API_URL;
 /** Enable authorization checks */

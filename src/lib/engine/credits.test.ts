@@ -35,4 +35,18 @@ describe("credits", () => {
   it("charges zero credits for zero usage", () => {
     expect(creditsForUsage("claude-sonnet-5", 0, 0)).toBe(0);
   });
+
+  it("defaults to a 1.0 markup (bills at cost)", () => {
+    // no markup arg is identical to the explicit 1.0 case
+    expect(creditsForUsage("claude-sonnet-5", 1_000_000, 1_000_000)).toBe(
+      creditsForUsage("claude-sonnet-5", 1_000_000, 1_000_000, 1),
+    );
+  });
+
+  it("scales credits by the COGS markup (retail unit)", () => {
+    // 12 usd * 2.0 / 0.01 = 2400 credits
+    expect(creditsForUsage("claude-sonnet-5", 1_000_000, 1_000_000, 2)).toBe(
+      2400,
+    );
+  });
 });

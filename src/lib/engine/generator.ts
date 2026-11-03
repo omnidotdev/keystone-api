@@ -1,3 +1,4 @@
+import { CREDIT_COGS_MARKUP } from "../config/env.config";
 import { creditsForUsage } from "./credits";
 import { validateAgainstManifest } from "./manifest";
 import { DEFAULT_MODEL, getModel } from "./models";
@@ -109,6 +110,7 @@ export const generate = async (args: GenerateArgs): Promise<GenerateResult> => {
       model,
       result.usage.inputTokens,
       result.usage.outputTokens,
+      CREDIT_COGS_MARKUP,
     ),
     model,
   };
