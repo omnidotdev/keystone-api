@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createSynapseClient } from "@omnidotdev/providers/ai";
 
 import type { ProviderClient } from "../engine/generator";
 
@@ -42,27 +43,41 @@ export const createAnthropicProviderClient = (
   const key = options.apiKey ?? process.env.SYNAPSE_API_KEY;
   const viaGateway = Boolean(baseURL);
 
-  const client = new Anthropic({
-    ...(baseURL ? { baseURL } : {}),
-    // Gateway wants a Bearer token; direct Anthropic wants x-api-key (apiKey)
-    ...(viaGateway && key ? { authToken: key } : key ? { apiKey: key } : {}),
-  });
-
   return {
     complete: async ({ system, prompt, model }) => {
-      const routedModel = viaGateway
-        ? (SYNAPSE_MODEL_MAP[model] ?? model)
-        : model;
+      // Non-streaming with a long timeout: a full-site generation completes well
+      // within it, and the gateway's streaming SSE does not match the SDK parser
+      if (viaGateway) {
+        // Production path: route through Synapse via the shared fleet client
+        // (@omnidotdev/providers/ai). It sends a plain-string system (the gateway
+        // rejects the content-block array form) and the provider-prefixed model
+        const client = createSynapseClient({
+          baseUrl: baseURL as string,
+          apiKey: key,
+          model: SYNAPSE_MODEL_MAP[model] ?? model,
+          timeoutMs: 600_000,
+        });
+        const result = await client.messages({
+          system,
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: 32_000,
+        });
+        return {
+          text: result.text,
+          usage: {
+            inputTokens: result.usage.inputTokens,
+            outputTokens: result.usage.outputTokens,
+          },
+        };
+      }
 
-      // Non-streaming with a long timeout: the Synapse gateway's streaming SSE
-      // does not match the SDK's stream-event parser ("unexpected event order"),
-      // and a full-site generation still completes well within the timeout.
+      // Local-dev path: talk to Anthropic directly via the SDK (credential
+      // resolution, x-api-key) with the raw model id
+      const client = new Anthropic(key ? { apiKey: key } : {});
       const message = await client.messages.create(
         {
-          model: routedModel,
+          model,
           max_tokens: 32_000,
-          // Plain string: the Synapse gateway rejects the content-block array
-          // form (used for cache_control) with a 422.
           system,
           messages: [{ role: "user", content: prompt }],
         },
