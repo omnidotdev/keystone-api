@@ -30,13 +30,14 @@ export const BILLING_WEBHOOK_SECRET = env.BILLING_WEBHOOK_SECRET;
 export const BILLING_BASE_URL = env.BILLING_BASE_URL;
 /**
  * Markup from real model cost to billable credits (a credit is a retail unit).
- * Default 1.0 bills at cost (no change for existing subscribers); raise to e.g.
- * 2.0 for ~50% gross margin, with grandfathering/announcement for live users.
+ * Default 2.0 (~50% gross margin), matching Facet and the fleet standard, so AI
+ * is not sold at cost. Keystone is pre-launch, so there are no subscribers to
+ * grandfather; override via CREDIT_COGS_MARKUP if needed.
  * Fleet credit-economics standard (see Facet's CREDIT_COGS_MARKUP)
  */
 export const CREDIT_COGS_MARKUP = (() => {
   const parsed = Number.parseFloat(env.CREDIT_COGS_MARKUP ?? "");
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
 })();
 /** Authorization PDP API URL */
 export const AUTHZ_API_URL = env.AUTHZ_API_URL;
