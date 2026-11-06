@@ -49,33 +49,41 @@ describe("repoSlugForSite", () => {
 });
 
 describe("createArborContentRepo", () => {
-  it("creates the repo as the user and returns its arbor clone url on master", async () => {
-    const { requests } = stubArbor({ slug: "site-abc", ownerUsername: "ada" });
-    const { spawn } = okSpawn();
+  it("creates the repo as the service account and returns its arbor clone url on master", async () => {
+    const { requests } = stubArbor({
+      slug: "site-abc",
+      ownerUsername: "keystone",
+    });
+    const { spawn, pushed } = okSpawn();
 
     const repo = createArborContentRepo({
       apiUrl: "https://api.arbor.omni.dev/graphql",
       gitBase: "https://api.arbor.omni.dev/git",
+      serviceToken: "svc-tok",
+      serviceOwner: "keystone",
       spawn,
     });
 
     const source = await repo.publish({
       siteId: "abc",
-      owner: "ada",
-      organizationId: "org-1",
-      authToken: "tok",
       files: { "index.html": "x", Dockerfile: "FROM nginx" },
     });
 
-    expect(source.git.url).toBe("https://api.arbor.omni.dev/git/ada/site-abc");
+    // repo lives under the service account's owner path, not the end user's
+    expect(source.git.url).toBe(
+      "https://api.arbor.omni.dev/git/keystone/site-abc",
+    );
     expect(source.git.branch).toBe("master");
-    // repo created public, associated with the workspace
+    // repo created public; no per-user workspace association is sent
     const input = (
       requests[0] as { variables: { input: Record<string, unknown> } }
     ).variables.input;
     expect(input.slug).toBe("site-abc");
     expect(input.visibility).toBe("PUBLIC");
-    expect(input.organizationId).toBe("org-1");
+    expect(input.organizationId).toBeUndefined();
+    // both the create and the push use the service token
+    const pushArgs = pushed.find((a) => a.includes("push"));
+    expect(pushArgs).toBeDefined();
   });
 
   it("treats an already-exists create as success (re-publish is idempotent)", async () => {
@@ -85,17 +93,19 @@ describe("createArborContentRepo", () => {
     const repo = createArborContentRepo({
       apiUrl: "https://api.arbor.omni.dev/graphql",
       gitBase: "https://api.arbor.omni.dev/git",
+      serviceToken: "svc-tok",
+      serviceOwner: "keystone",
       spawn,
     });
 
     const source = await repo.publish({
       siteId: "abc",
-      owner: "ada",
-      authToken: "tok",
       files: { "index.html": "x" },
     });
 
-    expect(source.git.url).toBe("https://api.arbor.omni.dev/git/ada/site-abc");
+    expect(source.git.url).toBe(
+      "https://api.arbor.omni.dev/git/keystone/site-abc",
+    );
     // still pushed content despite the create being a no-op
     expect(pushed.some((a) => a[0] === "push")).toBe(true);
   });

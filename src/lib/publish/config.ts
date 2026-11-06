@@ -7,6 +7,8 @@
 import {
   ARBOR_API_URL,
   ARBOR_GIT_BASE,
+  ARBOR_SERVICE_OWNER,
+  ARBOR_SERVICE_TOKEN,
   FRACTAL_API_TOKEN,
   FRACTAL_API_URL,
   HOSTED_PUBLISH_ENABLED,
@@ -26,8 +28,8 @@ export interface HostedPublisher {
 
 /**
  * Builds a {@link HostedPublisher} from env, or null when hosted publishing is
- * not fully configured. Content lives in Arbor (Omni's git host); the per-site
- * FractalService builds from it.
+ * not fully configured. Content lives in Arbor (Omni's git host), pushed by
+ * Keystone's service account; the per-site FractalService builds from it.
  */
 export const hostedPublisherFromEnv = (): HostedPublisher | null => {
   if (
@@ -35,7 +37,9 @@ export const hostedPublisherFromEnv = (): HostedPublisher | null => {
     !FRACTAL_API_URL ||
     !FRACTAL_API_TOKEN ||
     !ARBOR_API_URL ||
-    !ARBOR_GIT_BASE
+    !ARBOR_GIT_BASE ||
+    !ARBOR_SERVICE_TOKEN ||
+    !ARBOR_SERVICE_OWNER
   ) {
     return null;
   }
@@ -44,6 +48,8 @@ export const hostedPublisherFromEnv = (): HostedPublisher | null => {
     contentRepo: createArborContentRepo({
       apiUrl: ARBOR_API_URL,
       gitBase: ARBOR_GIT_BASE,
+      serviceToken: ARBOR_SERVICE_TOKEN,
+      serviceOwner: ARBOR_SERVICE_OWNER,
     }),
     client: createFractalGraphqlClient(FRACTAL_API_URL, FRACTAL_API_TOKEN),
     project: KEYSTONE_PROJECT,

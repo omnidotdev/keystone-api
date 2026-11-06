@@ -68,10 +68,23 @@ export const ARBOR_API_URL = env.ARBOR_API_URL;
 /** Arbor Git Smart-HTTP base, e.g. https://api.arbor.omni.dev/git */
 export const ARBOR_GIT_BASE = env.ARBOR_GIT_BASE;
 /**
- * Master switch for hosted publishing. Off until Arbor's git host is open to
- * users (it is currently a closed beta, so pushes + Fractal's clone would be
- * rejected). While off, publishing always returns the read-only preview and no
- * Arbor/Fractal calls are attempted. Flip to "true" when Arbor opens.
+ * Keystone's own Arbor publisher identity. Published sites are pushed to Arbor
+ * as this single service account, not as the end user, so a Keystone customer
+ * never needs their own Arbor access (Arbor is a closed beta with an
+ * application waitlist, and coupling paid publishing to that funnel is wrong).
+ * Keystone is an internal platform consumer of Arbor: the service account's
+ * Omni id is whitelisted in Arbor once, and it owns every site repo.
+ */
+/** Long-lived Omni access token for Keystone's Arbor publisher service account */
+export const ARBOR_SERVICE_TOKEN = env.ARBOR_SERVICE_TOKEN;
+/** The service account's Arbor username (the git-path owner of every site repo) */
+export const ARBOR_SERVICE_OWNER = env.ARBOR_SERVICE_OWNER;
+/**
+ * Master switch for hosted publishing. Off until Keystone's Arbor publisher
+ * service account is provisioned and whitelisted in Arbor. While off, publishing
+ * always returns the read-only preview and no Arbor/Fractal calls are attempted.
+ * Flip to "true" once ARBOR_SERVICE_TOKEN + ARBOR_SERVICE_OWNER are set and the
+ * account's Omni id is on Arbor's whitelist.
  */
 export const HOSTED_PUBLISH_ENABLED =
   env.KEYSTONE_HOSTED_PUBLISH_ENABLED === "true";
