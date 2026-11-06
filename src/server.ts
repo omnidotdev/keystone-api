@@ -13,9 +13,15 @@ import { schema } from "generated/graphql/schema.executable";
 import { useGrafast } from "grafast/envelop";
 import webhooks from "webhooks";
 
+import {
+  getGenerationCreditsUsed,
+  isGenerationBudgetExceeded,
+  recordGenerationCredits,
+} from "lib/billing/generationBudget";
 import appConfig from "lib/config/app.config";
 import {
   CORS_ALLOWED_ORIGINS,
+  DAILY_GENERATION_CREDIT_BUDGET,
   PORT,
   isDevEnv,
   isProdEnv,
@@ -273,6 +279,24 @@ const app = new Elysia({
       return { error: "too many generation requests, please slow down" };
     }
 
+    // Durable daily global generation-spend breaker (disabled when the budget
+    // is 0/unset). Caps total model dollars burned per day against runaway or
+    // proxy-rotated automated abuse the per-IP limiter alone cannot bound.
+    if (
+      DAILY_GENERATION_CREDIT_BUDGET > 0 &&
+      isGenerationBudgetExceeded(
+        await getGenerationCreditsUsed(dbPool),
+        DAILY_GENERATION_CREDIT_BUDGET,
+      )
+    ) {
+      set.status = 429;
+      set.headers["Retry-After"] = "3600";
+
+      return {
+        error: "generation is temporarily at capacity, please try again later",
+      };
+    }
+
     try {
       const result = await runSiteGeneration({
         store: createDrizzleSiteStore(dbPool),
@@ -281,6 +305,12 @@ const app = new Elysia({
         client: createAnthropicProviderClient(),
         model,
       });
+
+      // Record spend against the daily breaker (no-op when disabled). A counter
+      // write failure must never fail a generation the user already received.
+      if (DAILY_GENERATION_CREDIT_BUDGET > 0) {
+        await recordGenerationCredits(dbPool, result.credits).catch(() => {});
+      }
 
       return { siteId, reply: result.reply, credits: result.credits };
     } catch (error) {
@@ -486,6 +516,13 @@ console.log(
 console.log(
   `🧘 ${appConfig.name} GraphQL Yoga API running at ${app.server?.url}graphql`,
 );
+
+if (DAILY_GENERATION_CREDIT_BUDGET <= 0) {
+  // biome-ignore lint/suspicious/noConsole: root logging
+  console.warn(
+    "DAILY_GENERATION_CREDIT_BUDGET not set, generation spend breaker disabled",
+  );
+}
 
 /**
  * Graceful shutdown handler.

@@ -89,6 +89,16 @@ export const ARBOR_SERVICE_OWNER = env.ARBOR_SERVICE_OWNER;
 export const HOSTED_PUBLISH_ENABLED =
   env.KEYSTONE_HOSTED_PUBLISH_ENABLED === "true";
 
+/**
+ * Daily credit budget for AI site generation: a durable global circuit breaker
+ * against runaway or automated generation spend (`/generate` burns real model
+ * dollars via Synapse). `0` or unset disables the breaker (fail-open), so it
+ * ships inert until deliberately enabled in prod with a value tuned to observed
+ * daily volume. Set it above normal daily usage so only abuse trips it.
+ */
+export const DAILY_GENERATION_CREDIT_BUDGET =
+  Number(env.DAILY_GENERATION_CREDIT_BUDGET) || 0;
+
 export const isDevEnv = NODE_ENV === "development",
   isProdEnv = NODE_ENV === "production",
   protectRoutes = PROTECT_ROUTES === "true";
