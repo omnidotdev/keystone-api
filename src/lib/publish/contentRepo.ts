@@ -3,13 +3,14 @@
  * host). Fractal builds a static site from a git source, so each published site
  * is a repo on Arbor and keystone-api pushes the static build context to it.
  *
- * Using Arbor instead of a third-party host means a non-developer publishes with
- * only their existing Omni account (no separate signup), the site's code is a
- * repo they own and can browse at arbor.omni.dev, and every credential is
- * Omni-native: keystone-api acts AS the publishing user (their own access token
- * authorizes both the repo-create and the push), so there is no service PAT or
- * app key. Fractal already treats `arbor` as a first-class git host and rebuilds
- * on Arbor's push webhook.
+ * Keystone publishes as its OWN Arbor service account, not as the end user.
+ * Arbor is a closed beta with an application waitlist; making every paying
+ * Keystone customer clear that funnel just to publish would couple Keystone's
+ * conversion to an unrelated product's beta. Instead Keystone is an internal
+ * platform consumer of Arbor: one service account (its Omni id whitelisted in
+ * Arbor once) authorizes every repo-create and push and owns every site repo.
+ * Fractal treats `arbor` as a first-class git host and rebuilds on its push
+ * webhook. The end user never needs their own Arbor access.
  *
  * The adapter is an interface so the publish orchestrator stays unit-testable;
  * the Arbor implementation is the network IO boundary.
@@ -25,12 +26,6 @@ import type { Spawn } from "./git";
 export interface SitePublishContext {
   /** Stable site id; the repo slug derives from it */
   siteId: string;
-  /** Publishing user's Arbor username (the git-path owner segment) */
-  owner: string;
-  /** The user's workspace id; associates the repo with their workspace */
-  organizationId?: string;
-  /** The user's Omni access token; authorizes repo-create + push as them */
-  authToken: string;
   /** Static build context (path -> contents) from buildImageContext */
   files: Record<string, string>;
 }
@@ -58,6 +53,10 @@ export interface ArborContentRepoConfig {
   apiUrl: string;
   /** Git Smart-HTTP base, e.g. https://api.arbor.omni.dev/git */
   gitBase: string;
+  /** Keystone's Arbor publisher token; authorizes every repo-create + push */
+  serviceToken: string;
+  /** The service account's Arbor username; owns the git path for every repo */
+  serviceOwner: string;
   /** Published sites are public websites; their repos are public by default */
   visibility?: "PUBLIC" | "PRIVATE";
   /** Injected for testing */
@@ -86,7 +85,9 @@ const isAlreadyExists = (message: string): boolean =>
 
 /**
  * Arbor-backed {@link ContentRepo}. Creates the site's repo (idempotently) via
- * arbor-api as the publishing user, then force-pushes the build context to it.
+ * arbor-api as Keystone's service account, then force-pushes the build context
+ * to it. The same service token authorizes both calls, so no end-user Arbor
+ * access is involved.
  */
 export const createArborContentRepo = (
   config: ArborContentRepoConfig,
@@ -94,10 +95,11 @@ export const createArborContentRepo = (
   publish: async (ctx) => {
     const slug = repoSlugForSite(ctx.siteId);
     const client = new GraphQLClient(config.apiUrl, {
-      headers: { authorization: `Bearer ${ctx.authToken}` },
+      headers: { authorization: `Bearer ${config.serviceToken}` },
     });
 
-    // 1. Ensure the repo exists (as the user). A prior existence is not an error.
+    // 1. Ensure the repo exists (as the service account). A prior existence is
+    // not an error (re-publish is idempotent over a stable slug).
     try {
       const data = await client.request<CreateRepoResult>(
         CREATE_REPO_MUTATION,
@@ -106,9 +108,6 @@ export const createArborContentRepo = (
             name: slug,
             slug,
             visibility: config.visibility ?? "PUBLIC",
-            ...(ctx.organizationId
-              ? { organizationId: ctx.organizationId }
-              : {}),
           },
         },
       );
@@ -123,15 +122,16 @@ export const createArborContentRepo = (
         throw new Error("arbor repo create failed");
     }
 
-    // 2. Push the build context to the repo (force = snapshot), as the user.
-    const url = `${config.gitBase}/${ctx.owner}/${slug}`;
+    // 2. Push the build context to the repo (force = snapshot), as the service
+    // account under its own owner path.
+    const url = `${config.gitBase}/${config.serviceOwner}/${slug}`;
     const branch = "master";
 
     await pushFiles({
       files: ctx.files,
       remoteUrl: url,
       branch,
-      token: ctx.authToken,
+      token: config.serviceToken,
       spawn: config.spawn,
     });
 

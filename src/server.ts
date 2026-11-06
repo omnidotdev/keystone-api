@@ -301,15 +301,12 @@ const app = new Elysia({
   // link served at /published/:id (the free experience). Publishing never fails
   // to the user for lack of entitlement; it degrades to the preview.
   .post("/publish", async ({ body, request, set }) => {
-    const { siteId, customDomain, owner, organizationId } = (body ?? {}) as {
+    const { siteId, customDomain, organizationId } = (body ?? {}) as {
       siteId?: string;
       customDomain?: string;
-      // Publishing user's Arbor owner (workspace slug); the git-path owner of
-      // the site repo. Sent by the authenticated builder; hosted publish needs
-      // it to create + push the repo. Absent (anonymous builder) -> preview.
-      owner?: string;
-      // Workspace the site is published under. The site is claimed to it (its
-      // entitlement gates hosted publish, its repo owns the content).
+      // Workspace the site is published under. The site is claimed to it, and
+      // its entitlement gates hosted publish. Repos are owned by Keystone's
+      // Arbor service account, so no per-user Arbor owner is needed.
       organizationId?: string;
     };
 
@@ -375,14 +372,15 @@ const app = new Elysia({
         )
       : { hostedPublish: false, customDomains: 0 };
 
-    // Hosted publish needs the publishing user's identity (to own + push the
-    // Arbor repo as them). Without a token + owner we cannot deploy as the user,
-    // so fall back to the preview even for an entitled workspace.
+    // Hosted publish needs an authenticated workspace (the token vouches for
+    // membership and drives the entitlement check); the Arbor push itself runs
+    // as Keystone's service account, so no per-user Arbor identity is required.
+    // Without a token, or for an unentitled workspace, fall back to the preview.
     const canDeploy = Boolean(
-      hostedPublisher && entitlement.hostedPublish && accessToken && owner,
+      hostedPublisher && entitlement.hostedPublish && accessToken,
     );
 
-    if (canDeploy && hostedPublisher && accessToken && owner) {
+    if (canDeploy && hostedPublisher && accessToken) {
       try {
         const wantsDomain =
           typeof customDomain === "string" && customDomain.length > 0;
@@ -397,9 +395,6 @@ const app = new Elysia({
           project: hostedPublisher.project,
           siteId,
           site: row.files,
-          owner,
-          organizationId: row.organizationId,
-          authToken: accessToken,
           displayName: row.displayName ?? undefined,
           customDomain: domain,
         });
